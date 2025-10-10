@@ -4,10 +4,15 @@
 #include "FWCore/ParameterSet/interface/Registry.h"
 
 #include <iostream>
+#include <unordered_map>
+#include <optional>
 
-void TriggerOutputBranches::updateTriggerNames(TTree& tree,
-                                               const edm::TriggerNames& names,
-                                               const edm::TriggerResults& triggers) {
+void TriggerOutputBranches::updateTriggerNames(
+    TTree& tree,
+    const edm::TriggerNames& names,
+    const edm::TriggerResults& triggers,
+    bool pedantic_trigger_naming,
+    const std::optional<std::unordered_map<std::string, std::string>>& process_name_mapping) {
   std::vector<std::string> newNames(triggers.getTriggerNames());
   if (newNames.empty()) {
     for (unsigned int j = 0; j < triggers.size(); j++) {
@@ -30,6 +35,7 @@ void TriggerOutputBranches::updateTriggerNames(TTree& tree,
     }
   }
   // Find new ones
+  // TODO: Make pedantic naming configurable configurable
   for (unsigned int j = 0; j < newNames.size(); j++) {
     std::string name = newNames[j];  // no const & as it will be modified below!
     std::size_t vfound = name.rfind("_v");
@@ -37,6 +43,17 @@ void TriggerOutputBranches::updateTriggerNames(TTree& tree,
                                         name.find("Scouting") != std::string::npos)) {
       name.replace(vfound, name.size() - vfound, "");
     }
+
+    if (pedantic_trigger_naming) {
+      std::string mapped_process_name = m_processName;
+      if (process_name_mapping) {
+        if (process_name_mapping->contains(m_processName)) {
+          mapped_process_name = process_name_mapping->at(m_processName);
+        }
+      }
+      name = name + std::string("_") + mapped_process_name;
+    }
+
     bool found = false;
     if (name.compare(0, 3, "HLT") == 0 || name.compare(0, 4, "Flag") == 0 || name.compare(0, 2, "L1") == 0 ||
         name.find("Scouting") != std::string::npos) {
@@ -67,7 +84,7 @@ edm::TriggerNames TriggerOutputBranches::triggerNames(const edm::TriggerResults 
   edm::pset::Registry* psetRegistry = edm::pset::Registry::instance();
   edm::ParameterSet const* pset = nullptr;
   if (nullptr != (pset = psetRegistry->getMapped(triggerResults.parameterSetID()))) {
-    if (pset->existsAs<std::vector<std::string> >("@trigger_paths", true)) {
+    if (pset->existsAs<std::vector<std::string>>("@trigger_paths", true)) {
       edm::TriggerNames triggerNames(*pset);
 
       // This should never happen
@@ -84,7 +101,11 @@ edm::TriggerNames TriggerOutputBranches::triggerNames(const edm::TriggerResults 
   return edm::TriggerNames();
 }
 
-void TriggerOutputBranches::fill(const edm::EventForOutput& iEvent, TTree& tree) {
+void TriggerOutputBranches::fill(
+    const edm::EventForOutput& iEvent,
+    TTree& tree,
+    bool pedantic_trigger_naming,
+    const std::optional<std::unordered_map<std::string, std::string>>& process_name_mapping) {
   edm::Handle<edm::TriggerResults> handle;
   iEvent.getByToken(m_token, handle);
   const edm::TriggerResults& triggers = *handle;
@@ -92,7 +113,7 @@ void TriggerOutputBranches::fill(const edm::EventForOutput& iEvent, TTree& tree)
 
   if (m_lastRun != iEvent.id().run()) {
     m_lastRun = iEvent.id().run();
-    updateTriggerNames(tree, names, triggers);
+    updateTriggerNames(tree, names, triggers, pedantic_trigger_naming, process_name_mapping);
   }
   for (auto& pair : m_triggerBranches)
     fillColumn<uint8_t>(pair, triggers);

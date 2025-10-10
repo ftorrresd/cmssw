@@ -2,6 +2,8 @@
 #define PhysicsTools_NanoAOD_TriggerOutputBranches_h
 
 #include <string>
+#include <unordered_map>
+#include <optional>
 #include <vector>
 #include <TTree.h>
 #include "FWCore/Framework/interface/EventForOutput.h"
@@ -19,8 +21,15 @@ public:
                            "NanoAODOutputModule/TriggerOutputBranches can only write out edm::TriggerResults objects");
   }
 
-  void updateTriggerNames(TTree &tree, const edm::TriggerNames &names, const edm::TriggerResults &ta);
-  void fill(const edm::EventForOutput &iEvent, TTree &tree);
+  void updateTriggerNames(TTree &tree,
+                          const edm::TriggerNames &names,
+                          const edm::TriggerResults &ta,
+                          bool pedantic_hlt_naming,
+                          const std::optional<std::unordered_map<std::string, std::string>> &process_name_mapping);
+  void fill(const edm::EventForOutput &iEvent,
+            TTree &tree,
+            bool pedantic_hlt_naming,
+            const std::optional<std::unordered_map<std::string, std::string>> &process_name_mapping);
   std::string processName() { return m_processName; }
 
 private:
