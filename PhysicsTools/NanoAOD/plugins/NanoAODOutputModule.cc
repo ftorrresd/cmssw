@@ -13,6 +13,8 @@
 // system include files
 #include <algorithm>
 #include <memory>
+#include <optional>
+#include <unordered_map>
 
 #include "Compression.h"
 #include "TFile.h"
@@ -44,8 +46,6 @@
 #include "PhysicsTools/NanoAOD/plugins/EventStringOutputBranches.h"
 #include "PhysicsTools/NanoAOD/plugins/SummaryTableOutputBranches.h"
 
-#include <iostream>
-
 #include "oneapi/tbb/task_arena.h"
 
 class NanoAODOutputModule : public edm::one::OutputModule<> {
@@ -71,6 +71,8 @@ private:
   bool m_writeProvenance;
   bool m_fakeName;  //crab workaround, remove after crab is fixed
   int m_autoFlush;
+  bool m_pedantic_trigger_naming;
+  std::optional<std::unordered_map<std::string, std::string>> m_process_name_mapping;
   edm::ProcessHistoryRegistry m_processHistoryRegistry;
   edm::JobReport::Token m_jrToken;
   std::unique_ptr<TFile> m_file;
@@ -162,7 +164,18 @@ NanoAODOutputModule::NanoAODOutputModule(edm::ParameterSet const& pset)
       m_writeProvenance(pset.getUntrackedParameter<bool>("saveProvenance", true)),
       m_fakeName(pset.getUntrackedParameter<bool>("fakeNameForCrab", false)),
       m_autoFlush(pset.getUntrackedParameter<int>("autoFlush", -10000000)),
-      m_processHistoryRegistry() {}
+      m_pedantic_trigger_naming(pset.getUntrackedParameter<bool>("pedantic_trigger_naming", false)),
+      m_process_name_mapping(std::nullopt),
+      m_processHistoryRegistry() {
+  if (pset.existsAs<edm::ParameterSet>("process_name_mapping", /*allowTracked=*/false)) {
+    const auto& process_name_mapping_pset = pset.getUntrackedParameter<edm::ParameterSet>("process_name_mapping");
+
+    m_process_name_mapping = std::unordered_map<std::string, std::string>{};
+    for (const auto& k : process_name_mapping_pset.getParameterNamesForType<std::string>(false)) {
+      (*m_process_name_mapping)[k] = process_name_mapping_pset.getUntrackedParameter<std::string>(k);
+    }
+  }
+}
 
 NanoAODOutputModule::~NanoAODOutputModule() {}
 
@@ -222,7 +235,7 @@ void NanoAODOutputModule::write(edm::EventForOutput const& iEvent) {
   }
   // fill triggers
   for (auto& t : m_triggers)
-    t.fill(iEvent, *m_tree);
+    t.fill(iEvent, *m_tree, m_pedantic_trigger_naming, m_process_name_mapping);
   // fill event branches
   for (auto& t : m_evstrings)
     t.fill(iEvent, *m_tree);
@@ -419,6 +432,12 @@ void NanoAODOutputModule::fillDescriptions(edm::ConfigurationDescriptions& descr
           "Change the OutputModule name in the fwk job report to fake PoolOutputModule. This is needed to run on cran "
           "(and publish) till crab is fixed");
   desc.addUntracked<int>("autoFlush", -10000000)->setComment("Autoflush parameter for ROOT file");
+  desc.addUntracked<bool>("pedantic_trigger_naming", false)
+      ->setComment("Ensure that a SUFIX is postpended to all trigger names.");
+
+  edm::ParameterSetDescription process_name_mapping_desc;
+  process_name_mapping_desc.setAllowAnything();  // dynamic keys allowed
+  desc.addUntracked<edm::ParameterSetDescription>("process_name_mapping", process_name_mapping_desc);
 
   //replace with whatever you want to get from the EDM by default
   const std::vector<std::string> keep = {"drop *",
