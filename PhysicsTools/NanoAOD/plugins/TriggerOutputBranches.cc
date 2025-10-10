@@ -30,6 +30,7 @@ void TriggerOutputBranches::updateTriggerNames(TTree& tree,
     }
   }
   // Find new ones
+  // TODO: Make pedantic naming configurable configurable
   for (unsigned int j = 0; j < newNames.size(); j++) {
     std::string name = newNames[j];  // no const & as it will be modified below!
     std::size_t vfound = name.rfind("_v");
@@ -37,6 +38,12 @@ void TriggerOutputBranches::updateTriggerNames(TTree& tree,
                                         name.find("Scouting") != std::string::npos)) {
       name.replace(vfound, name.size() - vfound, "");
     }
+
+    bool pedantic_HLT_naming = true;
+    if (pedantic_HLT_naming) {
+      name = name + std::string("_") + m_processName;
+    }
+
     bool found = false;
     if (name.compare(0, 3, "HLT") == 0 || name.compare(0, 4, "Flag") == 0 || name.compare(0, 2, "L1") == 0 ||
         name.find("Scouting") != std::string::npos) {
